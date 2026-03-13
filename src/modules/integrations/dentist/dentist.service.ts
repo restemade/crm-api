@@ -10,74 +10,241 @@ import {
 export class DentistService {
     constructor(private readonly dentistClient: DentistClient) {}
 
-    authorize() {
-        return this.dentistClient.authorize();
+    private normalizePhone(phone: string): string {
+        return phone.replace(/\D/g, '');
     }
 
-    getBranches() {
-        return this.dentistClient.getBranches();
+    private cleanNamePart(value?: string | null): string | null {
+        if (!value) return null;
+
+        const cleaned = value.trim();
+
+        if (!cleaned) return null;
+
+        if (/^[,.\-_\s]+$/.test(cleaned)) {
+            return null;
+        }
+
+        return cleaned;
     }
 
-    getDoctors(params?: Record<string, unknown>) {
-        return this.dentistClient.getDoctors(params);
+    private buildFullName(parts: Array<string | null | undefined>): string {
+        return parts
+            .filter((part): part is string => Boolean(part && part.trim()))
+            .join(' ');
+    }
+
+    async authorize() {
+        const token = await this.dentistClient.authorize();
+
+        return {
+            ok: true,
+            tokenPreview: token.slice(0, 12) + '...',
+        };
+    }
+
+    async getBranches() {
+        const response = await this.dentistClient.getBranches();
+
+        return response.data.map((branch) => ({
+            id: branch.id,
+            title: branch.title,
+            address: branch.address,
+            phone: branch.phone,
+            email: branch.email,
+        }));
+    }
+
+    async getDoctors(params?: Record<string, unknown>) {
+        const response = await this.dentistClient.getDoctors(params);
+
+        return response.data.map((doctor) => {
+            const firstName = this.cleanNamePart(doctor.fname);
+            const lastName = this.cleanNamePart(doctor.lname);
+            const middleName = this.cleanNamePart(doctor.mname);
+
+            return {
+                id: doctor.id,
+                fullName:
+                    this.buildFullName([lastName, firstName, middleName]) ||
+                    firstName ||
+                    'Без имени',
+                firstName,
+                lastName,
+                middleName,
+                phone: doctor.phone,
+                email: doctor.email,
+                branches: doctor.branches.map((branch) => ({
+                    id: branch.id,
+                    title: branch.title,
+                })),
+                professions: doctor.professions.map((profession) => profession.title),
+                color: doctor.color,
+                deleted: doctor.deleted,
+            };
+        });
+    }
+
+    async searchPatients(search: string) {
+        const response = await this.dentistClient.searchPatients(search);
+
+        return response.data.map((patient) => {
+            const firstName = this.cleanNamePart(patient.fname);
+            const lastName = this.cleanNamePart(patient.lname);
+            const middleName = this.cleanNamePart(patient.mname);
+
+            return {
+                id: patient.id,
+                fullName:
+                    this.buildFullName([lastName, firstName, middleName]) ||
+                    firstName ||
+                    'Без имени',
+                firstName,
+                lastName,
+                middleName,
+                phone: patient.phone,
+                phone2: patient.phone_2,
+                email: patient.email,
+                gender: patient.gender,
+                dateOfBirth: patient.date_of_birth,
+            };
+        });
     }
 
     async findPatientByPhone(phone: string) {
-        const patients = await this.dentistClient.searchPatients(phone);
+        const normalizedInput = this.normalizePhone(phone);
+        const response = await this.dentistClient.searchPatients(phone);
 
-        return patients.find((patient) => {
-            const candidate = patient.phone || patient.mobile || '';
-            return candidate.replace(/\D/g, '').includes(phone.replace(/\D/g, ''));
-        }) || null;
+        const patients = response.data.map((patient) => {
+            const firstName = this.cleanNamePart(patient.fname);
+            const lastName = this.cleanNamePart(patient.lname);
+            const middleName = this.cleanNamePart(patient.mname);
+
+            return {
+                id: patient.id,
+                fullName:
+                    this.buildFullName([lastName, firstName, middleName]) ||
+                    firstName ||
+                    'Без имени',
+                firstName,
+                lastName,
+                middleName,
+                phone: patient.phone,
+                phone2: patient.phone_2,
+                email: patient.email,
+                gender: patient.gender,
+                dateOfBirth: patient.date_of_birth,
+            };
+        });
+
+        const exactMatch = patients.find((patient) => {
+            const p1 = patient.phone ? this.normalizePhone(patient.phone) : '';
+            const p2 = patient.phone2 ? this.normalizePhone(patient.phone2) : '';
+            return p1 === normalizedInput || p2 === normalizedInput;
+        });
+
+        return exactMatch || null;
     }
 
     async createPatient(input: {
         firstName: string;
         lastName?: string;
+        middleName?: string;
         phone: string;
+        phone2?: string;
+        email?: string;
+        gender?: string;
+        dateOfBirth?: string;
         branchId?: number;
     }) {
         const payload: DentistCreatePatientPayload = {
             branch_id: input.branchId ?? dentistConfig.defaultBranchId,
             fname: input.firstName,
             lname: input.lastName || dentistConfig.defaultPatientLastName,
+            mname: input.middleName,
             phone: input.phone,
+            phone_2: input.phone2,
+            email: input.email,
+            gender: input.gender,
+            date_of_birth: input.dateOfBirth,
         };
 
-        return this.dentistClient.createPatient(payload);
+        const patient = await this.dentistClient.createPatient(payload);
+
+        const firstName = this.cleanNamePart(patient.fname);
+        const lastName = this.cleanNamePart(patient.lname);
+        const middleName = this.cleanNamePart(patient.mname);
+
+        return {
+            id: patient.id,
+            fullName:
+                this.buildFullName([lastName, firstName, middleName]) ||
+                firstName ||
+                'Без имени',
+            firstName,
+            lastName,
+            middleName,
+            phone: patient.phone,
+            phone2: patient.phone_2,
+            email: patient.email,
+            gender: patient.gender,
+            dateOfBirth: patient.date_of_birth,
+        };
     }
 
-    getSchedule(params: {
+    async getSchedule(input: {
         doctorId: number;
         branchId: number;
         dateFrom: string;
         dateTo: string;
     }) {
-        return this.dentistClient.getSchedule({
-            doctor_id: params.doctorId,
-            branch_id: params.branchId,
-            date_from: params.dateFrom,
-            date_to: params.dateTo,
+        const response = await this.dentistClient.getSchedule({
+            doctor_id: input.doctorId,
+            branch_id: input.branchId,
+            date_from: input.dateFrom,
+            date_to: input.dateTo,
         });
+
+        return response.map((item) => ({
+            doctorId: item.doctor_id,
+            branchId: item.branch_id,
+            day: item.day,
+            timeFrom: item.time_from,
+            timeTo: item.time_to,
+            minutes: item.minutes,
+        }));
     }
 
-    getVisits(params: {
+    async getVisits(input: {
         doctorId?: number;
         patientId?: number;
         branchId?: number;
         dateFrom?: string;
         dateTo?: string;
     }) {
-        return this.dentistClient.getVisits({
-            doctor_id: params.doctorId,
-            patient_id: params.patientId,
-            branch_id: params.branchId,
-            date_from: params.dateFrom,
-            date_to: params.dateTo,
+        const response = await this.dentistClient.getVisits({
+            doctor_id: input.doctorId,
+            patient_id: input.patientId,
+            branch_id: input.branchId,
+            date_from: input.dateFrom,
+            date_to: input.dateTo,
         });
+
+        return response.data.map((visit) => ({
+            id: visit.id,
+            patientId: visit.patient_id,
+            doctorId: visit.doctor_id,
+            branchId: visit.branch_id,
+            start: visit.start,
+            end: visit.end,
+            description: visit.description,
+            status: visit.status,
+            createdAt: visit.created_at,
+            updatedAt: visit.updated_at,
+        }));
     }
 
-    createVisit(input: {
+    async createVisit(input: {
         branchId: number;
         patientId: number;
         doctorId: number;
@@ -94,10 +261,19 @@ export class DentistService {
             description: input.description,
         };
 
-        return this.dentistClient.createVisit(payload);
-    }
+        const visit = await this.dentistClient.createVisit(payload);
 
-    cancelVisit(visitId: number, reason: string) {
-        return this.dentistClient.cancelVisit(visitId, reason);
+        return {
+            id: visit.id,
+            patientId: visit.patient_id,
+            doctorId: visit.doctor_id,
+            branchId: visit.branch_id,
+            start: visit.start,
+            end: visit.end,
+            description: visit.description,
+            status: visit.status,
+            createdAt: visit.created_at,
+            updatedAt: visit.updated_at,
+        };
     }
 }

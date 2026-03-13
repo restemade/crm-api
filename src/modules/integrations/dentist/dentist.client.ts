@@ -1,8 +1,4 @@
-import {
-    BadGatewayException,
-    Injectable,
-    Logger,
-} from '@nestjs/common';
+import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import { dentistConfig } from '../../../config/dentist.config';
 import {
@@ -11,6 +7,7 @@ import {
     DentistCreatePatientPayload,
     DentistCreateVisitPayload,
     DentistDoctor,
+    DentistPaginatedResponse,
     DentistPatient,
     DentistScheduleItem,
     DentistVisit,
@@ -26,15 +23,10 @@ export class DentistClient {
         this.http = axios.create({
             baseURL: dentistConfig.baseUrl,
             timeout: 20000,
+            headers: {
+                'Content-Type': 'application/json',
+            },
         });
-    }
-
-    private async ensureToken(): Promise<string> {
-        if (this.accessToken) {
-            return this.accessToken;
-        }
-
-        return this.authorize();
     }
 
     async authorize(): Promise<string> {
@@ -50,17 +42,27 @@ export class DentistClient {
 
             this.accessToken = data.token;
             return this.accessToken;
-        } catch (error) {
+        } catch (error: any) {
             this.logger.error('Dentist authorize failed', error);
             throw new BadGatewayException('Failed to authorize in Dentist Plus');
         }
     }
 
+    private async ensureToken(): Promise<string> {
+        if (this.accessToken) {
+            return this.accessToken;
+        }
+
+        return this.authorize();
+    }
+
     private async request<T>(
         method: 'GET' | 'POST' | 'PUT',
         url: string,
-        data?: unknown,
-        params?: Record<string, unknown>,
+        options?: {
+            data?: unknown;
+            params?: Record<string, unknown>;
+        },
         retry = true,
     ): Promise<T> {
         const token = await this.ensureToken();
@@ -69,8 +71,8 @@ export class DentistClient {
             const response = await this.http.request<T>({
                 method,
                 url,
-                data,
-                params,
+                data: options?.data,
+                params: options?.params,
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
@@ -83,32 +85,52 @@ export class DentistClient {
             if ((status === 401 || status === 403) && retry) {
                 this.accessToken = null;
                 await this.authorize();
-                return this.request<T>(method, url, data, params, false);
+                return this.request<T>(method, url, options, false);
             }
 
-            this.logger.error(`Dentist request failed: ${method} ${url}`, error);
+            this.logger.error(`Dentist request failed: ${method} ${url}`);
+
+            if (error?.response) {
+                this.logger.error(`Status: ${error.response.status}`);
+                this.logger.error(`Response data: ${JSON.stringify(error.response.data)}`);
+            }
+
+            if (error?.config) {
+                this.logger.error(`Request url: ${error.config.baseURL}${error.config.url}`);
+                this.logger.error(`Request params: ${JSON.stringify(error.config.params)}`);
+                this.logger.error(`Request data: ${JSON.stringify(error.config.data)}`);
+            }
+
             throw new BadGatewayException(`Dentist request failed: ${url}`);
         }
     }
 
-    async getBranches(): Promise<DentistBranch[]> {
-        return this.request<DentistBranch[]>('GET', '/branches');
+    async getBranches(): Promise<DentistPaginatedResponse<DentistBranch>> {
+        return this.request<DentistPaginatedResponse<DentistBranch>>('GET', '/branches');
     }
 
-    async getDoctors(params?: Record<string, unknown>): Promise<DentistDoctor[]> {
-        return this.request<DentistDoctor[]>('GET', '/doctors', undefined, params);
+    async getDoctors(
+        params?: Record<string, unknown>,
+    ): Promise<DentistPaginatedResponse<DentistDoctor>> {
+        return this.request<DentistPaginatedResponse<DentistDoctor>>('GET', '/doctors', {
+            params,
+        });
     }
 
-    async searchPatients(search: string): Promise<DentistPatient[]> {
-        return this.request<DentistPatient[]>('GET', '/patients', undefined, { search });
+    async searchPatients(
+        search: string,
+    ): Promise<DentistPaginatedResponse<DentistPatient>> {
+        return this.request<DentistPaginatedResponse<DentistPatient>>('GET', '/patients', {
+            params: { search },
+        });
     }
 
-    async getPatientById(id: number): Promise<DentistPatient> {
-        return this.request<DentistPatient>('GET', `/patients/${id}`);
-    }
-
-    async createPatient(payload: DentistCreatePatientPayload): Promise<DentistPatient> {
-        return this.request<DentistPatient>('POST', '/patients', payload);
+    async createPatient(
+        payload: DentistCreatePatientPayload,
+    ): Promise<DentistPatient> {
+        return this.request<DentistPatient>('POST', '/patients', {
+            data: payload,
+        });
     }
 
     async getSchedule(params: {
@@ -117,7 +139,7 @@ export class DentistClient {
         date_from: string;
         date_to: string;
     }): Promise<DentistScheduleItem[]> {
-        return this.request<DentistScheduleItem[]>('GET', '/schedule', undefined, params);
+        return this.request<DentistScheduleItem[]>('GET', '/schedule', { params });
     }
 
     async getVisits(params: {
@@ -126,15 +148,17 @@ export class DentistClient {
         branch_id?: number;
         date_from?: string;
         date_to?: string;
-    }): Promise<DentistVisit[]> {
-        return this.request<DentistVisit[]>('GET', '/visits', undefined, params);
+    }): Promise<DentistPaginatedResponse<DentistVisit>> {
+        return this.request<DentistPaginatedResponse<DentistVisit>>('GET', '/visits', {
+            params,
+        });
     }
 
-    async createVisit(payload: DentistCreateVisitPayload): Promise<DentistVisit> {
-        return this.request<DentistVisit>('POST', '/visits', payload);
-    }
-
-    async cancelVisit(id: number, reason: string): Promise<unknown> {
-        return this.request('POST', `/visits/${id}/cancel`, { reason });
+    async createVisit(
+        payload: DentistCreateVisitPayload,
+    ): Promise<DentistVisit> {
+        return this.request<DentistVisit>('POST', '/visits', {
+            data: payload,
+        });
     }
 }

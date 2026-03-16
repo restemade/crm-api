@@ -376,6 +376,7 @@ export class BitrixService {
         end: string;
         dentistPlusPatientId?: number | string;
         dentistPlusVisitId?: number | string;
+        comment?: string;
     }): Promise<number> {
         const title = `Визит: ${input.patientName?.trim() || input.phone || 'Пациент'} — ${input.start}`;
 
@@ -387,12 +388,7 @@ export class BitrixService {
                 CONTACT_ID: input.contactId,
                 ASSIGNED_BY_ID: this.defaultAssignedById,
                 OPENED: 'Y',
-                COMMENTS: [
-                    `doctorId=${input.doctorId}`,
-                    `branchId=${input.branchId}`,
-                    `start=${input.start}`,
-                    `end=${input.end}`,
-                ].join('\n'),
+                COMMENTS: input.comment || '',
                 [this.UF.DEAL_DENTIST_PLUS_PATIENT_ID]: input.dentistPlusPatientId
                     ? String(input.dentistPlusPatientId)
                     : '',
@@ -414,6 +410,7 @@ export class BitrixService {
             branchId: number;
             start: string;
             end: string;
+            comment?: string;
         },
     ): Promise<void> {
         await this.call('crm.deal.update', {
@@ -425,12 +422,7 @@ export class BitrixService {
                 [this.UF.DEAL_DENTIST_PLUS_VISIT_ID]: input.dentistPlusVisitId
                     ? String(input.dentistPlusVisitId)
                     : '',
-                COMMENTS: [
-                    `doctorId=${input.doctorId}`,
-                    `branchId=${input.branchId}`,
-                    `start=${input.start}`,
-                    `end=${input.end}`,
-                ].join('\n'),
+                COMMENTS: input.comment || '',
             },
         });
     }
@@ -547,6 +539,7 @@ export class BitrixService {
         start: string;
         end: string;
         dentistPlusVisitId: number | string;
+        visitComment?: string;
     }): Promise<{
         contactId: number;
         requestDealId: number | null;
@@ -577,6 +570,7 @@ export class BitrixService {
                 end: input.end,
                 dentistPlusPatientId: input.patientId,
                 dentistPlusVisitId: input.dentistPlusVisitId,
+                comment: input.visitComment,
             });
 
             visitDeal = { ID: String(visitDealId) };
@@ -589,6 +583,7 @@ export class BitrixService {
                 branchId: input.branchId,
                 start: input.start,
                 end: input.end,
+                comment: input.visitComment,
             });
         }
 

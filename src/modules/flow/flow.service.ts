@@ -21,6 +21,36 @@ export class FlowService {
     return this.doctorsDirectoryService.getDoctorName(Number(doctorId));
   }
 
+  private formatVisitDate(dateTime?: string | null): string {
+    if (!dateTime) {
+      return 'Дата не указана';
+    }
+
+    const [datePart] = dateTime.split(' ');
+    const [year, month, day] = datePart.split('-');
+
+    if (!year || !month || !day) {
+      return dateTime;
+    }
+
+    return `${day}.${month}.${year}`;
+  }
+
+  private formatVisitTimeRange(start?: string | null, end?: string | null): string {
+    if (!start || !end) {
+      return 'Время не указано';
+    }
+
+    const startTime = start.split(' ')[1]?.slice(0, 5);
+    const endTime = end.split(' ')[1]?.slice(0, 5);
+
+    if (!startTime || !endTime) {
+      return `${start} - ${end}`;
+    }
+
+    return `${startTime}–${endTime}`;
+  }
+
   async processIncomingMessage(input: {
     phone: string;
     message: string;
@@ -79,6 +109,18 @@ export class FlowService {
 
     console.log('VISIT_CREATE_RESULT', visit);
 
+    const doctorName = this.formatDoctorLabel(resolvedDoctorId);
+    const formattedDate = this.formatVisitDate(resolvedStart);
+    const formattedTime = this.formatVisitTimeRange(resolvedStart, resolvedEnd);
+
+    const visitComment = [
+      'Создан визит в Dentist Plus',
+      `Врач: ${doctorName}`,
+      `Дата: ${formattedDate}`,
+      `Время: ${formattedTime}`,
+      `Dentist Plus visitId=${resolvedVisitId}`,
+    ].join('\n');
+
     const bitrix = await this.bitrixService.ensureVisitDealAndMoveRequest({
       patientId: resolvedPatientId,
       doctorId: resolvedDoctorId,
@@ -86,6 +128,7 @@ export class FlowService {
       start: resolvedStart,
       end: resolvedEnd,
       dentistPlusVisitId: resolvedVisitId,
+      visitComment,
     });
 
     return {
@@ -93,7 +136,9 @@ export class FlowService {
       visit,
       bitrix,
       meta: {
-        doctorName: this.formatDoctorLabel(resolvedDoctorId),
+        doctorName,
+        formattedDate,
+        formattedTime,
       },
     };
   }

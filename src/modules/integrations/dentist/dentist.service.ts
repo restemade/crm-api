@@ -35,8 +35,8 @@ export class DentistService {
 
   private buildFullName(parts: Array<string | null | undefined>): string {
     return parts
-      .filter((part): part is string => Boolean(part && part.trim()))
-      .join(' ');
+        .filter((part): part is string => Boolean(part && part.trim()))
+        .join(' ');
   }
 
   private parseDentistDateTime(value: string): Date {
@@ -61,7 +61,7 @@ export class DentistService {
     if (!intervals.length) return [];
 
     const sorted = [...intervals].sort(
-      (a, b) => a.start.getTime() - b.start.getTime(),
+        (a, b) => a.start.getTime() - b.start.getTime(),
     );
     const merged: BusyInterval[] = [sorted[0]];
 
@@ -79,6 +79,21 @@ export class DentistService {
     }
 
     return merged;
+  }
+
+  private mapVisit(visit: any) {
+    return {
+      id: visit.id,
+      patientId: visit.patient_id,
+      doctorId: visit.doctor_id,
+      branchId: visit.branch_id,
+      start: visit.start,
+      end: visit.end,
+      description: visit.description,
+      status: visit.status,
+      createdAt: visit.created_at,
+      updatedAt: visit.updated_at,
+    };
   }
 
   async authorize() {
@@ -113,9 +128,9 @@ export class DentistService {
       return {
         id: doctor.id,
         fullName:
-          this.buildFullName([lastName, firstName, middleName]) ||
-          firstName ||
-          'Без имени',
+            this.buildFullName([lastName, firstName, middleName]) ||
+            firstName ||
+            'Без имени',
         firstName,
         lastName,
         middleName,
@@ -143,9 +158,9 @@ export class DentistService {
       return {
         id: patient.id,
         fullName:
-          this.buildFullName([lastName, firstName, middleName]) ||
-          firstName ||
-          'Без имени',
+            this.buildFullName([lastName, firstName, middleName]) ||
+            firstName ||
+            'Без имени',
         firstName,
         lastName,
         middleName,
@@ -170,9 +185,9 @@ export class DentistService {
       return {
         id: patient.id,
         fullName:
-          this.buildFullName([lastName, firstName, middleName]) ||
-          firstName ||
-          'Без имени',
+            this.buildFullName([lastName, firstName, middleName]) ||
+            firstName ||
+            'Без имени',
         firstName,
         lastName,
         middleName,
@@ -225,9 +240,9 @@ export class DentistService {
     return {
       id: patient.id,
       fullName:
-        this.buildFullName([lastName, firstName, middleName]) ||
-        firstName ||
-        'Без имени',
+          this.buildFullName([lastName, firstName, middleName]) ||
+          firstName ||
+          'Без имени',
       firstName,
       lastName,
       middleName,
@@ -268,6 +283,9 @@ export class DentistService {
     branchId?: number;
     dateFrom?: string;
     dateTo?: string;
+    ids?: string;
+    withDeleted?: boolean;
+    detailed?: boolean;
   }) {
     const response = await this.dentistClient.getVisits({
       doctor_id: input.doctorId,
@@ -275,20 +293,17 @@ export class DentistService {
       branch_id: input.branchId,
       date_from: input.dateFrom,
       date_to: input.dateTo,
+      ids: input.ids,
+      with_deleted: input.withDeleted ? 1 : undefined,
+      detailed: input.detailed ? 1 : undefined,
     });
 
-    return response.data.map((visit) => ({
-      id: visit.id,
-      patientId: visit.patient_id,
-      doctorId: visit.doctor_id,
-      branchId: visit.branch_id,
-      start: visit.start,
-      end: visit.end,
-      description: visit.description,
-      status: visit.status,
-      createdAt: visit.created_at,
-      updatedAt: visit.updated_at,
-    }));
+    return response.data.map((visit) => this.mapVisit(visit));
+  }
+
+  async getVisit(visitId: number) {
+    const visit = await this.dentistClient.getVisit(visitId);
+    return this.mapVisit(visit);
   }
 
   async createVisit(input: {
@@ -309,18 +324,45 @@ export class DentistService {
     };
 
     const visit = await this.dentistClient.createVisit(payload);
+    return this.mapVisit(visit);
+  }
+
+  async updateVisit(input: {
+    visitId: number;
+    branchId: number;
+    patientId: number;
+    doctorId: number;
+    start: string;
+    end: string;
+    description?: string;
+    statusId?: number;
+  }) {
+    const visit = await this.dentistClient.updateVisit(input.visitId, {
+      branch_id: input.branchId,
+      patient_id: input.patientId,
+      doctor_id: input.doctorId,
+      start: input.start,
+      end: input.end,
+      description: input.description,
+      status_id: input.statusId,
+    });
+
+    return this.mapVisit(visit);
+  }
+
+  async cancelVisit(input: {
+    visitId: number;
+    reason: string;
+  }) {
+    const ok = await this.dentistClient.cancelVisit(
+        input.visitId,
+        input.reason,
+    );
 
     return {
-      id: visit.id,
-      patientId: visit.patient_id,
-      doctorId: visit.doctor_id,
-      branchId: visit.branch_id,
-      start: visit.start,
-      end: visit.end,
-      description: visit.description,
-      status: visit.status,
-      createdAt: visit.created_at,
-      updatedAt: visit.updated_at,
+      ok: Boolean(ok),
+      visitId: input.visitId,
+      reason: input.reason,
     };
   }
 
@@ -332,7 +374,7 @@ export class DentistService {
     slotMinutes?: number;
   }) {
     const slotMinutes =
-      input.slotMinutes && input.slotMinutes > 0 ? input.slotMinutes : 30;
+        input.slotMinutes && input.slotMinutes > 0 ? input.slotMinutes : 30;
 
     const [schedule, visits] = await Promise.all([
       this.dentistClient.getSchedule({
@@ -360,16 +402,16 @@ export class DentistService {
       const dayEnd = this.combineDateAndTime(workday.day, workday.time_to);
 
       const busyIntervals: BusyInterval[] = visitItems
-        .filter((visit) => {
-          return (
-            visit.start.getTime() < dayEnd.getTime() &&
-            visit.end.getTime() > dayStart.getTime()
-          );
-        })
-        .map((visit) => ({
-          start: visit.start < dayStart ? dayStart : visit.start,
-          end: visit.end > dayEnd ? dayEnd : visit.end,
-        }));
+          .filter((visit) => {
+            return (
+                visit.start.getTime() < dayEnd.getTime() &&
+                visit.end.getTime() > dayStart.getTime()
+            );
+          })
+          .map((visit) => ({
+            start: visit.start < dayStart ? dayStart : visit.start,
+            end: visit.end > dayEnd ? dayEnd : visit.end,
+          }));
 
       const mergedBusy = this.mergeBusyIntervals(busyIntervals);
       const slots: Array<{ start: string; end: string }> = [];
@@ -378,9 +420,9 @@ export class DentistService {
 
       for (const busy of mergedBusy) {
         while (
-          cursor.getTime() + slotMinutes * 60 * 1000 <=
-          busy.start.getTime()
-        ) {
+            cursor.getTime() + slotMinutes * 60 * 1000 <=
+            busy.start.getTime()
+            ) {
           const slotStart = new Date(cursor);
           const slotEnd = this.addMinutes(slotStart, slotMinutes);
 
@@ -398,9 +440,9 @@ export class DentistService {
       }
 
       while (
-        cursor.getTime() + slotMinutes * 60 * 1000 <=
-        dayEnd.getTime()
-      ) {
+          cursor.getTime() + slotMinutes * 60 * 1000 <=
+          dayEnd.getTime()
+          ) {
         const slotStart = new Date(cursor);
         const slotEnd = this.addMinutes(slotStart, slotMinutes);
 
@@ -413,19 +455,10 @@ export class DentistService {
       }
 
       return {
-        doctorId: workday.doctor_id,
-        branchId: workday.branch_id,
+        doctorId: input.doctorId,
+        branchId: input.branchId,
         day: workday.day,
-        workTime: {
-          start: this.formatDateTime(dayStart),
-          end: this.formatDateTime(dayEnd),
-        },
-        slotMinutes,
-        busy: mergedBusy.map((item) => ({
-          start: this.formatDateTime(item.start),
-          end: this.formatDateTime(item.end),
-        })),
-        freeSlots: slots,
+        slots,
       };
     });
 

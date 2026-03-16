@@ -63,13 +63,13 @@ export class DentistClient {
   }
 
   private async request<T>(
-    method: 'GET' | 'POST' | 'PUT',
-    url: string,
-    options?: {
-      data?: unknown;
-      params?: Record<string, unknown>;
-    },
-    retry = true,
+      method: 'GET' | 'POST' | 'PUT',
+      url: string,
+      options?: {
+        data?: unknown;
+        params?: Record<string, unknown>;
+      },
+      retry = true,
   ): Promise<T> {
     const token = await this.ensureToken();
 
@@ -116,7 +116,7 @@ export class DentistClient {
   }
 
   async getDoctors(
-    params?: Record<string, unknown>,
+      params?: Record<string, unknown>,
   ): Promise<DentistPaginatedResponse<DentistDoctor>> {
     return this.request<DentistPaginatedResponse<DentistDoctor>>('GET', '/doctors', {
       params,
@@ -124,7 +124,7 @@ export class DentistClient {
   }
 
   async searchPatients(
-    search: string,
+      search: string,
   ): Promise<DentistPaginatedResponse<DentistPatient>> {
     return this.request<DentistPaginatedResponse<DentistPatient>>('GET', '/patients', {
       params: { search },
@@ -132,7 +132,7 @@ export class DentistClient {
   }
 
   async createPatient(
-    payload: DentistCreatePatientPayload,
+      payload: DentistCreatePatientPayload,
   ): Promise<DentistPatient> {
     return this.request<DentistPatient>('POST', '/patients', {
       data: payload,
@@ -156,11 +156,14 @@ export class DentistClient {
     branch_id?: number;
     date_from?: string;
     date_to?: string;
+    ids?: string;
+    with_deleted?: string | number;
+    detailed?: string | number;
   }): Promise<DentistPaginatedResponse<DentistVisit>> {
     const firstPage = await this.request<DentistPaginatedResponse<DentistVisit>>(
-      'GET',
-      '/visits',
-      { params },
+        'GET',
+        '/visits',
+        { params },
     );
 
     const allData = [...firstPage.data];
@@ -175,14 +178,14 @@ export class DentistClient {
 
     for (let page = 2; page <= lastPage; page++) {
       const nextPage = await this.request<DentistPaginatedResponse<DentistVisit>>(
-        'GET',
-        '/visits',
-        {
-          params: {
-            ...params,
-            page,
+          'GET',
+          '/visits',
+          {
+            params: {
+              ...params,
+              page,
+            },
           },
-        },
       );
 
       allData.push(...nextPage.data);
@@ -200,11 +203,43 @@ export class DentistClient {
     };
   }
 
+  async getVisit(visitId: number): Promise<DentistVisit> {
+    return this.request<DentistVisit>('GET', `/visits/${visitId}`);
+  }
+
   async createVisit(
-    payload: DentistCreateVisitPayload,
+      payload: DentistCreateVisitPayload,
   ): Promise<DentistVisit> {
     return this.request<DentistVisit>('POST', '/visits', {
       data: payload,
+    });
+  }
+
+  async updateVisit(
+      visitId: number,
+      payload: {
+        branch_id: number;
+        patient_id: number;
+        doctor_id: number;
+        start: string;
+        end: string;
+        description?: string;
+        status_id?: number;
+      },
+  ): Promise<DentistVisit> {
+    return this.request<DentistVisit>('PUT', `/visits/${visitId}`, {
+      data: payload,
+    });
+  }
+
+  async cancelVisit(
+      visitId: number,
+      reason: string,
+  ): Promise<boolean> {
+    return this.request<boolean>('POST', `/visits/${visitId}/cancel`, {
+      data: {
+        reason,
+      },
     });
   }
 }

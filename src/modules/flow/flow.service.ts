@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { BitrixService } from '../integrations/bitrix/bitrix.service';
 import { DentistService } from '../integrations/dentist/dentist.service';
 import { PatientSyncService } from './patient-sync.service';
+import { DoctorsDirectoryService } from '../doctors/doctors-directory.service';
 
 @Injectable()
 export class FlowService {
@@ -9,7 +10,16 @@ export class FlowService {
       private readonly dentistService: DentistService,
       private readonly bitrixService: BitrixService,
       private readonly patientSyncService: PatientSyncService,
+      private readonly doctorsDirectoryService: DoctorsDirectoryService,
   ) {}
+
+  private formatDoctorLabel(doctorId?: number | null): string {
+    if (!doctorId) {
+      return 'Врач не указан';
+    }
+
+    return this.doctorsDirectoryService.getDoctorName(Number(doctorId));
+  }
 
   async processIncomingMessage(input: {
     phone: string;
@@ -82,6 +92,9 @@ export class FlowService {
       ok: true,
       visit,
       bitrix,
+      meta: {
+        doctorName: this.formatDoctorLabel(resolvedDoctorId),
+      },
     };
   }
 
